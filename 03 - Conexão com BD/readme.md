@@ -1,0 +1,3 @@
+- Colocar segredos no secrets.toml
+- Nome do banco = sakila
+- Pode ser necessário baixar as dependências `mysqlclient` e `sqlalchemy`
