@@ -12,7 +12,7 @@ st.title("Detecção de Questões Marcadas e Estatísticas")
 gabarito_resposta = st.file_uploader("Escolha o gabarito resposta", type=["jpg", "jpeg", "png"], accept_multiple_files=False)
 gabarito_alunos = st.file_uploader("Escolha os gabaritos dos alunos", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
-if gabarito_resposta is not None and gabarito_alunos is not None:
+if gabarito_resposta and gabarito_alunos:
     gabarito_image = Image.open(gabarito_resposta)
     gabarito_np = np.array(gabarito_image)
     

@@ -1,39 +1,52 @@
-# functions/process_answer_sheet.py
-
 import cv2
 import numpy as np
 import pandas as pd
+from collections import namedtuple
+from functions.detect_alternatives import detect_alternatives
 
-def process_answer_sheet(image_np, num_questions, num_choices, question_spacing, choice_spacing, circle_radius):
-    # Converte para escala de cinza
-    gray = cv2.cvtColor(image_np, cv2.COLOR_BGR2GRAY)
-    
-    # Aplica um blur para suavizar
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+ProcessedResult = namedtuple("ProcessedResult", ["marked_image", "red_circles_image", "answers"])
 
-    # Detecta círculos usando HoughCircles
+def detect_circles(image, dp=1.2, minDist=20, param1=50, param2=30, minRadius=5, maxRadius=20):
+    blurred = cv2.GaussianBlur(image, (5, 5), 0)
     circles = cv2.HoughCircles(
         blurred,
         cv2.HOUGH_GRADIENT,
-        dp=1.2,
-        minDist=20,
-        param1=50,
-        param2=30,
-        minRadius=5,
-        maxRadius=20
+        dp=dp,
+        minDist=minDist,
+        param1=param1,
+        param2=param2,
+        minRadius=minRadius,
+        maxRadius=maxRadius
     )
+    return np.round(circles[0, :]).astype("int") if circles is not None else None
 
-    if circles is not None:
-        circles = np.round(circles[0, :]).astype("int")
 
-    # Imagem para marcação dos círculos detectados
-    marked_image = image_np.copy()
+def draw_circles(image, circles, color=(0, 255, 0), thickness=4):
     if circles is not None:
         for (x, y, r) in circles:
-            cv2.circle(marked_image, (x, y), r, (0, 255, 0), 4)
+            cv2.circle(image, (x, y), r, color, thickness)
 
-    # Detecta as alternativas marcadas
-    from functions.detect_alternatives import detect_alternatives
+
+def get_choice_coordinates(question_idx, choice_idx, choice_spacing, question_spacing, offset_x=55):
+    choice_x = offset_x + (choice_idx * choice_spacing)
+    choice_y = (question_idx * question_spacing + (question_idx + 1) * question_spacing) // 2
+    return choice_x, choice_y
+
+
+def process_answer_sheet(image_np, num_questions, num_choices, question_spacing, choice_spacing, circle_radius):
+    # Conversão para escala de cinza
+    gray = cv2.cvtColor(image_np, cv2.COLOR_BGR2GRAY)
+
+    # Detecta círculos
+    circles = detect_circles(gray)
+    if circles is None:
+        raise ValueError("Nenhum círculo foi detectado na imagem.")
+
+    # Imagem com círculos marcados
+    marked_image = image_np.copy()
+    draw_circles(marked_image, circles)
+
+    # Detecta alternativas marcadas
     marked_answers = detect_alternatives(
         circles,
         image_np,
@@ -43,21 +56,17 @@ def process_answer_sheet(image_np, num_questions, num_choices, question_spacing,
         choice_spacing
     )
 
-    # Cria tabela de respostas
-    answers = pd.DataFrame(marked_answers, columns=["Questão", "Alternativa Marcada"])
-
-    # Imagem para marcar respostas corretas
+    # Imagem com respostas corretas destacadas
     red_circles_image = image_np.copy()
     for question_number, answer in marked_answers:
-        # Calcula os índices com base nas respostas detectadas
         question_idx = int(question_number.split()[1]) - 1  # Exemplo: "Questão 1" -> índice 0
         choice_idx = ord(answer) - 65  # 'A' -> 0, 'B' -> 1, etc.
-
-        # Calcula as coordenadas aproximadas
-        choice_x = 55 + (choice_idx * choice_spacing)
-        choice_y = (question_idx * question_spacing + (question_idx + 1) * question_spacing) // 2
-
-        # Desenha o círculo vermelho
+        choice_x, choice_y = get_choice_coordinates(
+            question_idx, choice_idx, choice_spacing, question_spacing
+        )
         cv2.circle(red_circles_image, (choice_x, choice_y), circle_radius, (0, 0, 255), 4)
 
-    return marked_image, red_circles_image, answers
+    # Criação da tabela de respostas
+    answers = pd.DataFrame(marked_answers, columns=["Questão", "Alternativa Marcada"])
+
+    return ProcessedResult(marked_image, red_circles_image, answers)
